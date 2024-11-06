@@ -48,24 +48,24 @@ class Group(BaseGroup):
     def update_order_amounts(self):
         for player in self.get_players():
             if player.game_role == 'Brewery':
-                brewery_order_amounts.append(player.order_amounts)
+                self.brewery_order_amounts.append(player.order_amounts)
             elif player.game_role == 'Distributor':
-                distributor_order_amounts.append(player.order_amounts)
+                self.distributor_order_amounts.append(player.order_amounts)
             elif player.game_role == 'Wholesaler':
-                wholesaler_order_amounts.append(player.order_amounts)
+                self.wholesaler_order_amounts.append(player.order_amounts)
             elif player.game_role == 'Retailer':
-                retailer_order_amounts.append(player.order_amounts)
+                self.retailer_order_amounts.append(player.order_amounts)
     
     def update_inventories(self):
         for player in self.get_players():
             if player.game_role == 'Brewery':
-                brewery_inventories.append(player.inventory)
+                self.brewery_inventories.append(player.inventory)
             elif player.game_role == 'Distributor':
-                distributor_inventories.append(player.inventory)
+                self.distributor_inventories.append(player.inventory)
             elif player.game_role == 'Wholesaler':
-                wholesaler_inventories.append(player.inventory)
+                self.wholesaler_inventories.append(player.inventory)
             elif player.game_role == 'Retailer':
-                retailer_inventories.append(player.inventory)
+                self.retailer_inventories.append(player.inventory)
 
 
     def set_payoffs(self):
@@ -87,31 +87,32 @@ class Player(BasePlayer):
 
     def calculate_inventory(self):
         # still need to calculate in transit, demand
-        for player in self.get_players():
+        for player in self.group.get_players():
             if player.game_role == 'Brewery':
-                if len(distributor_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - distributor_order_amounts[self.group.subsession.round_number - 3] + brewery_order_amounts[self.group.subsession.round_number - 2])
-                    self.backorder = self.backorder + (self.inventory - distributor.order_amount)
+                if len(self.distributor_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.distributor_order_amounts[self.group.subsession.round_number - 3] + self.brewery_order_amounts[self.group.subsession.round_number - 2])
+                    self.backorder = self.backorder + (self.inventory - self.distributor.order_amount)
                     
             elif player.game_role == 'Distributor':
-                if len(wholesaler_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - wholesaler_order_amounts[self.group.subsession.round_number - 3] + distributor_order_amounts[self.group.subsession.round_number - 3])
-                    self.backorder = self.backorder + (self.inventory - wholesaler.order_amount)
+                if len(self.wholesaler_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.wholesaler_order_amounts[self.group.subsession.round_number - 3] + self.distributor_order_amounts[self.group.subsession.round_number - 3])
+                    self.backorder = self.backorder + (self.inventory - self.wholesaler.order_amount)
             elif player.game_role == 'Wholesaler':
-                if len(retailer_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - retailer_order_amounts[self.group.subsession.round_number - 3] + wholesaler_order_amounts[self.group.subsession.round_number - 3])
-                    self.backorder = self.backorder + (self.inventory - retailer.order_amount)
+                if len(self.retailer_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.retailer_order_amounts[self.group.subsession.round_number - 3] + self.wholesaler_order_amounts[self.group.subsession.round_number - 3])
+                    self.backorder = self.backorder + (self.inventory - self.retailer.order_amount)
                     
             elif player.game_role == 'Retailer':
-                # if len(???) >= self.group.subsession.round_number - 1:
-                    # self.inventory = max(0, self.inventory - ???[self.group.subsession.round_number - 3] + retailer_order_amounts[self.group.subsession.round_number - 3])
-                    # self.backorder = self.backorder + (self.inventory - ???.order_amount)
+                # self.inventory = max(0, self.inventory - ???[self.group.subsession.round_number - 3] + retailer_order_amounts[self.group.subsession.round_number - 3])
+                # self.backorder = self.backorder + (self.inventory - ???.order_amount)
         
 
 class Introduction(Page):
     def vars_for_template(self):
+        group_number = self.player.group.id_in_subsession
         return {
-            'role': self.player.game_role
+            'role': self.player.game_role,
+            'group_number': group_number
         }
 
 class OrderPage(Page):
@@ -120,7 +121,7 @@ class OrderPage(Page):
 
     def before_next_page(self):
         for player in self.get_players():
-            if isinstance(self.player.order_amount, int) and 0 < self.order_amount < 10000:
+            if isinstance(self.player.order_amount, int) and 0 < player.order_amount < 10000:
                 self.group.update_order_amounts()
                 self.group.update_inventories()
                 self.player.calculate_inventory()
