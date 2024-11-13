@@ -1,15 +1,23 @@
-from otree.api import *
 
+from otree.api import *
+import json
+import random
 
 doc = """
 Your app description
 """
+
 
 class C(BaseConstants):
     NAME_IN_URL = 'BeerGame'
     PLAYERS_PER_GROUP = 4
     NUM_ROUNDS = 10
     ROLES = ['Brewery', 'Distributor', 'Wholesaler', 'Retailer']
+    BREWERY_ROLE = 'Brewery'
+    DISTRIBUTOR_ROLE = 'Distributor'
+    WHOLESALER_ROLE = 'Wholesaler'
+    RETAILER_ROLE = 'Retailer'
+
 
 
 class Subsession(BaseSubsession):
@@ -24,55 +32,57 @@ class Subsession(BaseSubsession):
                     player.game_role = role
 
             # should allow access to specific groups, returns group matrix
-            matrix = subsession.get_group_matrix()
+            matrix = self.get_group_matrix()
             for row in matrix:
-                row.reverse()  
-                subsession.set_group_matrix(matrix)
+                row.reverse()
+                self.set_group_matrix(matrix)
         else:
-            subsession.group_like_round(1)
-    
+            self.group_like_round(1)
+
 
 class Group(BaseGroup):
-    # arrays to keep track of inventories and order amounts across rounds
-    brewery_inventories = models.LongStringField(initial='[]')
-    distributor_inventories = models.LongStringField(initial='[]')
-    wholesaler_inventories = models.LongStringField(initial='[]')
-    retailer_inventories = models.LongStringField(initial='[]')
+    # arrays to keep track of inventories and order amounts across rounds, previously in group class
 
-    brewery_order_amounts = models.LongStringField(initial='[]')
-    distributor_order_amounts = models.LongStringField(initial='[]')
-    wholesaler_order_amounts = models.LongStringField(initial='[]')
-    retailer_order_amounts = models.LongStringField(initial='[]')
+    brewery_inventories = models.StringField(initial="")
+    distributor_inventories = models.StringField(initial="")
+    wholesaler_inventories = models.StringField(initial="")
+    retailer_inventories = models.StringField(initial="")
+
+    brewery_order_amounts = models.StringField(initial="")
+    distributor_order_amounts = models.StringField(initial="")
+    wholesaler_order_amounts = models.StringField(initial="")
+    retailer_order_amounts = models.StringField(initial="")
+    
 
     # functions to update arrays
+
     def update_order_amounts(self):
         for player in self.get_players():
-            if player.game_role == 'Brewery':
-                self.brewery_order_amounts.append(player.order_amounts)
-            elif player.game_role == 'Distributor':
-                self.distributor_order_amounts.append(player.order_amounts)
-            elif player.game_role == 'Wholesaler':
-                self.wholesaler_order_amounts.append(player.order_amounts)
-            elif player.game_role == 'Retailer':
-                self.retailer_order_amounts.append(player.order_amounts)
-    
+            if player.game_role == C.BREWERY_ROLE:
+                self.brewery_order_amounts.append(player.order_amount)
+            elif player.game_role == C.DISTRIBUTOR_ROLE:
+                self.distributor_order_amounts.append(player.order_amount)
+            elif player.game_role == C.WHOLESALER_ROLE:
+                self.wholesaler_order_amounts.append(player.order_amount)
+            elif player.game_role == C.RETAILER_ROLE:
+                self.retailer_order_amounts.append(player.order_amount)
+
     def update_inventories(self):
-        for player in self.get_players():
-            if player.game_role == 'Brewery':
+        for player in self.group.get_players():
+            if player.game_role == C.BREWERY_ROLE:
                 self.brewery_inventories.append(player.inventory)
-            elif player.game_role == 'Distributor':
+            elif player.game_role == C.DISTRIBUTOR_ROLE:
                 self.distributor_inventories.append(player.inventory)
-            elif player.game_role == 'Wholesaler':
+            elif player.game_role == C.WHOLESALER_ROLE:
                 self.wholesaler_inventories.append(player.inventory)
-            elif player.game_role == 'Retailer':
+            elif player.game_role == C.RETAILER_ROLE:
                 self.retailer_inventories.append(player.inventory)
 
-
     def set_payoffs(self):
-        for player in self.get_players():
+        for player in self.group.get_players():
             inventory_cost = player.inventory * 1  # Cost per unit of inventory
             backorder_cost = player.backorder * 2  # Cost per unit of backorder
-            
+
             # Assuming you want to minimize costs, you could treat the cost as a negative payoff
             player.cost = inventory_cost + backorder_cost
             player.payoff = -player.cost  # This sets the payoff to the negative cost for ranking or comparison purposes
@@ -88,49 +98,55 @@ class Player(BasePlayer):
     def calculate_inventory(self):
         # still need to calculate in transit, demand
         for player in self.group.get_players():
-            if player.game_role == 'Brewery':
-                if len(self.distributor_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - self.distributor_order_amounts[self.group.subsession.round_number - 3] + self.brewery_order_amounts[self.group.subsession.round_number - 2])
-                    self.backorder = self.backorder + (self.inventory - self.distributor.order_amount)
-                    
-            elif player.game_role == 'Distributor':
-                if len(self.wholesaler_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - self.wholesaler_order_amounts[self.group.subsession.round_number - 3] + self.distributor_order_amounts[self.group.subsession.round_number - 3])
-                    self.backorder = self.backorder + (self.inventory - self.wholesaler.order_amount)
-            elif player.game_role == 'Wholesaler':
-                if len(self.retailer_order_amounts) >= self.group.subsession.round_number - 1:
-                    self.inventory = max(0, self.inventory - self.retailer_order_amounts[self.group.subsession.round_number - 3] + self.wholesaler_order_amounts[self.group.subsession.round_number - 3])
-                    self.backorder = self.backorder + (self.inventory - self.retailer.order_amount)
-                    
-            elif player.game_role == 'Retailer':
-                # self.inventory = max(0, self.inventory - ???[self.group.subsession.round_number - 3] + retailer_order_amounts[self.group.subsession.round_number - 3])
-                # self.backorder = self.backorder + (self.inventory - ???.order_amount)
-        
+            if player.game_role == C.BREWERY_ROLE:
+                if len(self.group.distributor_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.group.distributor_order_amounts[
+                        self.group.subsession.round_number - 3] + self.group.brewery_order_amounts[
+                                             self.group.subsession.round_number - 2])
+                    self.backorder = self.backorder + (self.inventory - self.group.distributor.order_amount)
+            elif player.game_role == C.DISTRIBUTOR_ROLE:
+                if len(self.group.wholesaler_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.group.wholesaler_order_amounts[
+                        self.group.subsession.round_number - 3] + self.group.distributor_order_amounts[
+                                             self.group.subsession.round_number - 3])
+                    self.backorder = self.backorder + (self.inventory - self.group.wholesaler.order_amount)
+            elif player.game_role == C.WHOLESALER_ROLE:
+                if len(self.group.retailer_order_amounts) >= self.group.subsession.round_number - 1:
+                    self.inventory = max(0, self.inventory - self.group.retailer_order_amounts[
+                        self.group.subsession.round_number - 3] + self.group.wholesaler_order_amounts[
+                                             self.group.subsession.round_number - 3])
+                    self.backorder = self.backorder + (self.inventory - self.group.retailer.order_amount)
+            elif player.game_role == C.RETAILER_ROLE:
+                self.inventory = max(0, self.inventory - 25 + self.group.retailer_order_amounts[
+                    self.group.subsession.round_number - 3])
+                self.backorder = max(0, self.backorder + (self.inventory - 25))
+
 
 class Introduction(Page):
     def vars_for_template(self):
-        group_number = self.player.group.id_in_subsession
         return {
-            'role': self.player.game_role,
-            'group_number': group_number
+            'role': "Test Role"
+            # self.player.game_role
         }
+
 
 class OrderPage(Page):
     form_model = 'player'
     form_fields = ['order_amount']
 
-    def before_next_page(self):
-        for player in self.get_players():
-            if isinstance(self.player.order_amount, int) and 0 < player.order_amount < 10000:
+    def before_next_page(self, timeout_happened=False):
+        for player in self.group.get_players(): 
+            if isinstance(player.order_amount, int) and 0 < player.order_amount < 10000:
                 self.group.update_order_amounts()
                 self.group.update_inventories()
-                self.player.calculate_inventory()
-            # else ask again?
+                player.calculate_inventory()
 
 class ResultsWaitPage(WaitPage):
     after_all_players_arrive = 'set_payoffs'
 
+
 class Results(Page):
     pass
+
 
 page_sequence = [Introduction, OrderPage, ResultsWaitPage, Results]
